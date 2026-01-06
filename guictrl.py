@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, font
 import numpy as np
-from ailib import to_c_board, from_c_index
+from ailib import to_c_board, from_c_board, from_c_index, ailib
 from functools import lru_cache
 
 # 使用缓存装饰器避免重复计算颜色值
@@ -209,91 +209,56 @@ class GUI2048Control:
         self.last_move_label.configure(text=f"上一步: {move_names[move]}")
     
     def _execute_move(self, direction):
-        """执行移动操作"""
-        # 保存原始棋盘状态用于比较
-        old_board = [row[:] for row in self.board]
-        score_increase = 0
+        """执行移动操作，使用C接口"""
+        # 将当前棋盘转换为C接口可用格式
+        log2_board = [[int(np.log2(max(tile, 1))) for tile in row] for row in self.board]
+        c_board = to_c_board(log2_board)
         
-        # 基于方向执行不同的移动逻辑
-        if direction == 0:  # 上
+        # 使用C接口执行移动
+        new_c_board = ailib.execute_move(direction, c_board)
+        
+        # 将结果转换回Python格式
+        new_board = from_c_board(new_c_board)
+        
+        # 检查棋盘是否有变化
+        board_changed = False
+        for i in range(4):
             for j in range(4):
-                # 提取列
-                column = [self.board[i][j] for i in range(4)]
-                # 移动并合并
-                new_column, points = self._merge_tiles(column)
-                # 更新列
-                for i in range(4):
-                    self.board[i][j] = new_column[i]
-                score_increase += points
+                if new_board[i][j] != log2_board[i][j]:
+                    board_changed = True
+                    break
+            if board_changed:
+                break
                 
-        elif direction == 1:  # 下
-            for j in range(4):
-                # 提取列并反转
-                column = [self.board[i][j] for i in range(3, -1, -1)]
-                # 移动并合并
-                new_column, points = self._merge_tiles(column)
-                # 更新列（反转回来）
-                for i in range(4):
-                    self.board[i][j] = new_column[3-i]
-                score_increase += points
-                
-        elif direction == 2:  # 左
+        if board_changed:
+            # 更新棋盘
             for i in range(4):
-                # 提取行
-                row = self.board[i][:]
-                # 移动并合并
-                new_row, points = self._merge_tiles(row)
-                # 更新行
-                self.board[i] = new_row
-                score_increase += points
-                
-        elif direction == 3:  # 右
+                for j in range(4):
+                    if new_board[i][j] > 0:
+                        self.board[i][j] = 2 ** new_board[i][j]
+                    else:
+                        self.board[i][j] = 0
+                        
+            # 添加新方块
+            # self._add_new_tile()
+            
+            # 计算得分差异并更新分数
+            # 这里简化处理，直接从UI中读取分数不太可能，所以计算合并格子产生的分数
+            old_sum = sum(sum(log2_board, []))
+            new_sum = sum(sum(new_board, []))
+            # 差值中不包括新增的方块(通常为1或2)
+            score_increase = 0
             for i in range(4):
-                # 提取行并反转
-                row = self.board[i][::-1]
-                # 移动并合并
-                new_row, points = self._merge_tiles(row)
-                # 更新行（反转回来）
-                self.board[i] = new_row[::-1]
-                score_increase += points
-        
-        # # 检查棋盘是否有变化 - 使用任意值不同来快速判断
-        # board_changed = False
-        # for i in range(4):
-        #     for j in range(4):
-        #         if old_board[i][j] != self.board[i][j]:
-        #             board_changed = True
-        #             break
-        #     if board_changed:
-        #         break
-        
-        # # 如果棋盘有变化，添加新的方块
-        # if board_changed:
-        #     self._add_new_tile()
-        #     self.score += score_increase
-        #     self.score_label.configure(text=str(self.score))
-        #     self._update_display()
-    
-    def _merge_tiles(self, line):
-        """合并一行或一列的方块，返回新的行/列和得分增加"""
-        # 优化的合并逻辑：一次遍历完成移动和合并
-        result = [0] * 4
-        points = 0
-        idx = 0
-        
-        # 移动并合并非零值
-        for val in line:
-            if val == 0:
-                continue
-                
-            if idx > 0 and result[idx-1] == val:
-                result[idx-1] *= 2
-                points += result[idx-1]
-            else:
-                result[idx] = val
-                idx += 1
-                
-        return result, points
+                for j in range(4):
+                    if new_board[i][j] > log2_board[i][j] and log2_board[i][j] > 0:
+                        # 有合并发生
+                        score_increase += 2 ** new_board[i][j]
+            
+            self.score += score_increase
+            self.score_label.configure(text=str(self.score))
+            
+            # 更新界面显示
+            self._update_display()
     
     def _add_new_tile(self):
         """在随机空位添加一个新的2或4方块"""
@@ -321,27 +286,48 @@ class GUIGameControl:
     def __init__(self, ai_solver_func):
         self.ai_solver_func = ai_solver_func
         self.gui = None
+        from ailib import ailib
+        self.ailib = ailib
     
     def get_status(self):
-        """始终返回'playing'状态以保持游戏进行"""
-        return 'playing'
+        """始终返回'running'状态以保持游戏进行"""
+        return 'running'
     
     def get_score(self):
         """获取当前分数"""
         if self.gui:
-            return int(self.gui.score_label.cget("text"))
+            return int(self.gui.score)
         return 0
     
     def get_board(self):
         """获取当前棋盘状态"""
         if self.gui:
-            # 使用列表推导式优化计算
+            # 直接返回棋盘的对数形式
             return [[int(np.log2(max(tile, 1))) for tile in row] for row in self.gui.board]
         return [[0 for _ in range(4)] for _ in range(4)]
     
     def execute_move(self, move):
-        """执行移动 - 在GUI模式下不实际执行，仅显示建议"""
-        pass
+        """使用C接口执行移动"""
+        if self.gui:
+            # 将当前棋盘转换为C接口可用格式
+            from ailib import to_c_board, from_c_board
+            c_board = to_c_board(self.get_board())
+            # 使用C接口执行移动
+            new_c_board = self.ailib.execute_move(move, c_board)
+            # 将结果转换回Python格式
+            new_board = from_c_board(new_c_board)
+            # 将对数形式转换回原始值
+            for i in range(4):
+                for j in range(4):
+                    if new_board[i][j] > 0:
+                        self.gui.board[i][j] = 2 ** new_board[i][j]
+                    else:
+                        self.gui.board[i][j] = 0
+            # 更新界面
+            self.gui._update_display()
+            # 更新状态标签
+            move_names = ['上移', '下移', '左移', '右移']
+            self.gui.last_move_label.configure(text=f"上一步: {move_names[move]}")
     
     def restart_game(self):
         """重新开始游戏"""

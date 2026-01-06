@@ -76,8 +76,9 @@ def parse_args(argv):
 
     parser = argparse.ArgumentParser(description="Use the AI to play 2048 via browser control")
     parser.add_argument('-p', '--port', help="Port number to control on (default: 32000 for Firefox, 9222 for Chrome)", type=int)
-    parser.add_argument('-b', '--browser', help="Browser you're using. Only Firefox with remote debugging, Firefox with the Remote Control extension (deprecated), and Chrome with remote debugging, are supported right now.", default='firefox', choices=('firefox', 'firefox-rc', 'chrome', 'manual', 'gui'))
-    parser.add_argument('-k', '--ctrlmode', help="Control mode to use. If the browser control doesn't seem to work, try changing this.", default='hybrid', choices=('keyboard', 'fast', 'hybrid', 'play2048co', 'gui'))
+    parser.add_argument('-b', '--browser', help="Browser you're using. Only Firefox with remote debugging, Firefox with the Remote Control extension (deprecated), and Chrome with remote debugging, are supported right now.", default='firefox', choices=('firefox', 'firefox-rc', 'chrome', 'manual', 'gui', 'web'))
+    parser.add_argument('-k', '--ctrlmode', help="Control mode to use. If the browser control doesn't seem to work, try changing this.", default='hybrid', choices=('keyboard', 'fast', 'hybrid', 'play2048co', 'gui', 'web'))
+    parser.add_argument('-w', '--webport', help="Port number for the web interface (default: 5000)", type=int, default=5000)
 
     return parser.parse_args(argv)
 
@@ -102,6 +103,9 @@ def main(argv):
     elif args.browser == 'gui' or args.ctrlmode == 'gui':
         # GUI模式不需要浏览器控制
         ctrl = None
+    elif args.browser == 'web' or args.ctrlmode == 'web':
+        # Web模式不需要浏览器控制
+        ctrl = None
     elif args.browser != 'manual':
         raise Exception("Unsupported browser")
 
@@ -113,6 +117,11 @@ def main(argv):
         gamectrl = GUIGameControl(find_best_move)
         gamectrl.setup_gui()  # 启动GUI
         return 0  # GUI模式下不进入play_game流程
+    elif args.browser == 'web' or args.ctrlmode == 'web':
+        from webctrl import WebGameControl
+        gamectrl = WebGameControl(find_best_move)
+        gamectrl.setup_web(port=args.webport)  # 启动Web服务器
+        return 0  # Web模式下不进入play_game流程
     elif args.ctrlmode == 'keyboard' and args.browser != 'manual':
         from gamectrl import Keyboard2048Control
         gamectrl = Keyboard2048Control(ctrl)
