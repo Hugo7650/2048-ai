@@ -9,7 +9,7 @@ class Generic2048Control(object):
         self.ctrl = ctrl
         self.setup()
 
-    def setup():
+    def setup(self):
         raise NotImplementedError()
 
     def execute(self, cmd):
@@ -156,7 +156,8 @@ class Keyboard2048Control(Generic2048Control):
                 m = re.match(r'^tile-position-(\d+)-(\d+)$', k)
                 if m:
                     pos = int(m.group(1)), int(m.group(2))
-            board[pos[1]-1][pos[0]-1] = int(round(math.log(tval, 2)))
+            if pos is not None and tval is not None:
+                board[pos[1]-1][pos[0]-1] = int(round(math.log(tval, 2)))
 
         return board
 
@@ -174,10 +175,15 @@ class Hybrid2048Control(Fast2048Control, Keyboard2048Control):
     '''
 
     setup = Fast2048Control.setup
-    get_status = Keyboard2048Control.get_status
+    
+    def get_status(self):
+        return Keyboard2048Control.get_status(self)
+        
     get_score = Fast2048Control.get_score
     get_board = Fast2048Control.get_board
-    execute_move = Keyboard2048Control.execute_move
+    
+    def execute_move(self, move):
+        return Keyboard2048Control.execute_move(self, move)
 
 class Play2048CoControl(object):
     """ Controller for Play2048.co """

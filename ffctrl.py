@@ -4,12 +4,6 @@ from queue import Queue
 import socket
 import threading
 
-# Python 3 compatibility
-try:
-    input = raw_input
-except NameError:
-    pass
-
 class FirefoxRemoteControl(object):
     ''' Interact with a web browser running the Remote Control extension. '''
     def __init__(self, port):
@@ -44,7 +38,7 @@ class FirefoxDebuggerControl(object):
         self.sock = socket.socket()
         self.sock.connect(('localhost', port))
 
-        info = self._recv_msg()
+        # info = self._recv_msg()
         self.actors = {}
 
         self.thread = threading.Thread(target=self._receive_thread)
@@ -59,12 +53,13 @@ class FirefoxDebuggerControl(object):
             page = pages[0]
         else:
             print("Select a page to attach to:")
-            for i, page in enumerate(pages):
-                title = self._send_recv(page['actor'], 'getTarget')['frame']['title']
+            for i, page_item in enumerate(pages):
+                title = self._send_recv(page_item['actor'], 'getTarget')['frame']['title']
                 title = title.encode('unicode_escape').decode('iso-8859-1')
                 if len(title) > 100:
                     title = title[:100] + '...'
                 print("%d) %s" % (i+1, title))
+            page = None
             while 1:
                 try:
                     pageidx = int(input("Selection? "))
@@ -72,6 +67,8 @@ class FirefoxDebuggerControl(object):
                     break
                 except Exception as e:
                     print("Invalid selection:", e)
+            if page is None:
+                raise Exception("No page selected")
 
         page = self._send_recv(page['actor'], 'getTarget')['frame']
         self.page = page
@@ -133,8 +130,8 @@ class FirefoxDebuggerControl(object):
                 break
 
     def execute(self, cmd):
-        resp = self._send_recv(self.page['consoleActor'], 'evaluateJSAsync', {'text': cmd})
-        resultID = resp['resultID']
+        # resp = self._send_recv(self.page['consoleActor'], 'evaluateJSAsync', {'text': cmd})
+        # resultID = resp['resultID']
         for result in self._actor_msgs(self.page['consoleActor']):
             if result['hasException']:
                 raise Exception(result['exceptionMessage'])

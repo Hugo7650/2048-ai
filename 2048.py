@@ -7,6 +7,7 @@ from __future__ import print_function
 import time
 
 from ailib import ailib, to_c_board, from_c_index
+from multiprocessing.pool import ThreadPool
 
 # Enable multithreading?
 MULTITHREAD = True
@@ -28,26 +29,20 @@ def _to_score(c):
 def to_score(m):
     return [[_to_score(c) for c in row] for row in m]
 
-if MULTITHREAD:
-    from multiprocessing.pool import ThreadPool
-    pool = ThreadPool(4)
-    def score_toplevel_move(args):
-        return ailib.score_toplevel_move(*args)
+pool = ThreadPool(4)
+def score_toplevel_move(args):
+    return ailib.score_toplevel_move(*args)
 
-    def find_best_move(m):
-        board = to_c_board(m)
+def find_best_move(m):
+    board = to_c_board(m)
 
-        print_board(to_val(m))
+    # print_board(to_val(m))
 
-        scores = pool.map(score_toplevel_move, [(board, move) for move in range(4)])
-        bestmove, bestscore = max(enumerate(scores), key=lambda x:x[1])
-        if bestscore == 0:
-            return -1
-        return bestmove
-else:
-    def find_best_move(m):
-        board = to_c_board(m)
-        return ailib.find_best_move(board)
+    scores = pool.map(score_toplevel_move, [(board, move) for move in range(4)])
+    bestmove, bestscore = max(enumerate(scores), key=lambda x:x[1])
+    if bestscore == 0:
+        return -1
+    return bestmove
 
 def movename(move):
     return ['up', 'down', 'left', 'right'][move]
@@ -68,21 +63,21 @@ def play_game(gamectrl):
         move = find_best_move(board)
         if move < 0:
             break
-        print("%010.6f: Score %d, Move %d: %s" % (time.time() - start, gamectrl.get_score(), moveno, movename(move)))
+        # print("%010.6f: Score %d, Move %d: %s" % (time.time() - start, gamectrl.get_score(), moveno, movename(move)))
         gamectrl.execute_move(move)
 
     score = gamectrl.get_score()
     board = gamectrl.get_board()
     maxval = max(max(row) for row in to_val(board))
-    print("Game over. Final score %d; highest tile %d." % (score, maxval))
+    # print("Game over. Final score %d; highest tile %d." % (score, maxval))
 
 def parse_args(argv):
     import argparse
 
     parser = argparse.ArgumentParser(description="Use the AI to play 2048 via browser control")
     parser.add_argument('-p', '--port', help="Port number to control on (default: 32000 for Firefox, 9222 for Chrome)", type=int)
-    parser.add_argument('-b', '--browser', help="Browser you're using. Only Firefox with remote debugging, Firefox with the Remote Control extension (deprecated), and Chrome with remote debugging, are supported right now.", default='firefox', choices=('firefox', 'firefox-rc', 'chrome', 'manual'))
-    parser.add_argument('-k', '--ctrlmode', help="Control mode to use. If the browser control doesn't seem to work, try changing this.", default='hybrid', choices=('keyboard', 'fast', 'hybrid', 'play2048co'))
+    parser.add_argument('-b', '--browser', help="Browser you're using. Only Firefox with remote debugging, Firefox with the Remote Control extension (deprecated), and Chrome with remote debugging, are supported right now.", default='firefox', choices=('firefox', 'firefox-rc', 'chrome', 'manual', 'gui'))
+    parser.add_argument('-k', '--ctrlmode', help="Control mode to use. If the browser control doesn't seem to work, try changing this.", default='hybrid', choices=('keyboard', 'fast', 'hybrid', 'play2048co', 'gui'))
 
     return parser.parse_args(argv)
 
@@ -104,22 +99,34 @@ def main(argv):
         if args.port is None:
             args.port = 9222
         ctrl = ChromeDebuggerControl(args.port)
+    elif args.browser == 'gui' or args.ctrlmode == 'gui':
+        # GUI模式不需要浏览器控制
+        ctrl = None
+    elif args.browser != 'manual':
+        raise Exception("Unsupported browser")
 
     if args.browser == 'manual':
         from manualctrl import ManualControl
         gamectrl = ManualControl()
-    elif args.ctrlmode == 'keyboard':
+    elif args.browser == 'gui' or args.ctrlmode == 'gui':
+        from guictrl import GUIGameControl
+        gamectrl = GUIGameControl(find_best_move)
+        gamectrl.setup_gui()  # 启动GUI
+        return 0  # GUI模式下不进入play_game流程
+    elif args.ctrlmode == 'keyboard' and args.browser != 'manual':
         from gamectrl import Keyboard2048Control
         gamectrl = Keyboard2048Control(ctrl)
-    elif args.ctrlmode == 'fast':
+    elif args.ctrlmode == 'fast' and args.browser != 'manual':
         from gamectrl import Fast2048Control
         gamectrl = Fast2048Control(ctrl)
-    elif args.ctrlmode == 'hybrid':
+    elif args.ctrlmode == 'hybrid' and args.browser != 'manual':
         from gamectrl import Hybrid2048Control
         gamectrl = Hybrid2048Control(ctrl)
-    elif args.ctrlmode == 'play2048co':
+    elif args.ctrlmode == 'play2048co' and args.browser != 'manual':
         from gamectrl import Play2048CoControl
         gamectrl = Play2048CoControl(ctrl)
+    else:
+        raise Exception("Unsupported control mode")
 
     if gamectrl.get_status() == 'ended':
         gamectrl.restart_game()

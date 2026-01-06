@@ -1,21 +1,13 @@
 from __future__ import print_function
-import json, threading, itertools
+import json
+import threading
+import itertools
 
-try:
-    import websocket
-except ImportError:
-    websocket = None
+import websocket
 
 # Python 3 compatibility
-try:
-    from urllib2 import urlopen
-except ImportError:
-    from urllib.request import urlopen
+from urllib.request import urlopen
 
-try:
-    input = raw_input
-except NameError:
-    pass
 
 class ChromeDebuggerControl(object):
     ''' Control Chrome using the debugging socket.
@@ -34,11 +26,13 @@ class ChromeDebuggerControl(object):
             page = pages[0]
         else:
             print("Select a page to attach to:")
-            for i, page in enumerate(pages):
-                title = page['title'].encode('unicode_escape').decode('iso-8859-1')
+            for i, page_item in enumerate(pages):
+                title = page_item['title'].encode('unicode_escape').decode('iso-8859-1')
                 if len(title) > 100:
                     title = title[:100] + '...'
                 print("%d) %s" % (i+1, title))
+            
+            page = None
             while 1:
                 try:
                     pageidx = int(input("Selection? "))
@@ -46,6 +40,11 @@ class ChromeDebuggerControl(object):
                     break
                 except Exception as e:
                     print("Invalid selection:", e)
+                    
+            # If still no page selected, default to the first one
+            if page is None:
+                print("No valid selection made, using the first page.")
+                page = pages[0]
 
         # Configure debugging websocket
         wsurl = page['webSocketDebuggerUrl']
@@ -73,6 +72,7 @@ class ChromeDebuggerControl(object):
                         self.results[id] = message
                         event.set()
             except Exception as e:
+                print("Error in receive thread:", e)
                 break
 
     def _send_cmd_noresult(self, method, **params):
@@ -99,7 +99,7 @@ class ChromeDebuggerControl(object):
         resp = self.results.pop(id)
         if 'error' in resp:
             raise Exception("Command %s(%s) failed: %s (%d)" % (
-                method, ', '.join('%s=%r' % (k,v) for k,v in params.iteritems()), resp['error']['message'], resp['error']['code']))
+                method, ', '.join('%s=%r' % (k,v) for k,v in params.items()), resp['error']['message'], resp['error']['code']))
         return resp['result']
 
     def execute(self, cmd):

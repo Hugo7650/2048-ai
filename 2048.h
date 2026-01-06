@@ -21,6 +21,12 @@ struct trans_table_entry_t{
     float heuristic;
 };
 
+// 移动结果结构体，用于保存多线程计算的结果
+struct move_score_t {
+    int move;
+    float score;
+};
+
 static const board_t ROW_MASK = 0xFFFFULL;
 static const board_t COL_MASK = 0x000F000F000F000FULL;
 

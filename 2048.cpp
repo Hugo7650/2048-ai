@@ -6,6 +6,10 @@
 #include <string.h>
 #include <time.h>
 #include <algorithm>
+#include <thread>
+#include <vector>
+#include <mutex>
+#include <future>
 
 #include "2048.h"
 
@@ -399,27 +403,40 @@ float score_toplevel_move(board_t board, int move) {
     elapsed = (finish.tv_sec - start.tv_sec);
     elapsed += (finish.tv_usec - start.tv_usec) / 1000000.0;
 
-    printf("Move %d: result %f: eval'd %ld moves (%d cache hits, %d cache size) in %.2f seconds (maxdepth=%d)\n", move, res,
-        state.moves_evaled, state.cachehits, (int)state.trans_table.size(), elapsed, state.maxdepth);
+    // printf("Move %d: result %f: eval'd %ld moves (%d cache hits, %d cache size) in %.2f seconds (maxdepth=%d)\n", move, res,
+    //     state.moves_evaled, state.cachehits, (int)state.trans_table.size(), elapsed, state.maxdepth);
 
     return res;
 }
 
 /* Find the best move for a given board. */
 int find_best_move(board_t board) {
-    int move;
-    float best = 0;
     int bestmove = -1;
 
     print_board(board);
     printf("Current scores: heur %.0f, actual %.0f\n", score_heur_board(board), score_board(board));
 
-    for(move=0; move<4; move++) {
-        float res = score_toplevel_move(board, move);
-
-        if(res > best) {
-            best = res;
-            bestmove = move;
+    // 创建一个向量来保存每个移动的得分计算结果
+    std::vector<std::future<move_score_t>> futures;
+    
+    // 为每个可能的移动创建一个任务
+    for(int move = 0; move < 4; move++) {
+        // 检查移动是否有效
+        if(execute_move(move, board) != board) {
+            futures.push_back(std::async(std::launch::async, [board, move]() -> move_score_t {
+                float score = score_toplevel_move(board, move);
+                return {move, score};
+            }));
+        }
+    }
+    
+    // 收集结果并找到最佳移动
+    float best = 0;
+    for(auto &f : futures) {
+        move_score_t result = f.get();
+        if(result.score > best) {
+            best = result.score;
+            bestmove = result.move;
         }
     }
 
@@ -525,5 +542,10 @@ void play_game(get_move_func_t get_move) {
 
 int main() {
     init_tables();
+    
+    // 设置线程数为硬件支持的并发线程数量（可选）
+    // unsigned int num_threads = std::thread::hardware_concurrency();
+    // std::cout << "Running with " << num_threads << " threads\n";
+    
     play_game(find_best_move);
 }
